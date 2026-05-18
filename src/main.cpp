@@ -291,7 +291,7 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("PatternShelf v1.5");
+        setWindowTitle("PatternShelf v1.6");
         setWindowIcon(QIcon::fromTheme("patternshelf"));
         resize(1000, 600);
 
@@ -312,6 +312,7 @@ public:
         auto *importCsvColorsButton = new QPushButton("Import Colors from CSV");
         auto *backupLibraryButton = new QPushButton("Backup Library");
         auto *restoreLibraryButton = new QPushButton("Restore Library");
+        auto *exportFilteredBuyButton = new QPushButton("Export Filtered Buy List");
         auto *copyBuyButton = new QPushButton("Copy Need-to-Buy List");
         auto *editButton = new QPushButton("Edit");
         auto *deleteButton = new QPushButton("Delete");
@@ -324,6 +325,7 @@ public:
         toolbar->addWidget(importCsvColorsButton);
         toolbar->addWidget(backupLibraryButton);
         toolbar->addWidget(restoreLibraryButton);
+        toolbar->addWidget(exportFilteredBuyButton);
         toolbar->addWidget(copyBuyButton);
         toolbar->addWidget(editButton);
         toolbar->addWidget(deleteButton);
@@ -419,6 +421,10 @@ public:
             restoreLibrary();
         });
 
+        connect(exportFilteredBuyButton, &QPushButton::clicked, this, [this]() {
+            exportFilteredNeedToBuyList();
+        });
+
         connect(copyBuyButton, &QPushButton::clicked, this, [this]() {
             copyNeedToBuyList();
         });
@@ -479,7 +485,7 @@ private:
             QMessageBox::about(
                 this,
                 "About PatternShelf",
-                "<h3>PatternShelf v1.5</h3>"
+                "<h3>PatternShelf v1.6</h3>"
                 "<p>A personal cross-stitch pattern library manager.</p>"
                 "<p>Tracks pattern PDFs, stitch sizes, fabric cuts, DMC colors, "
                 "FlossKeeper stash matches, missing colors, and need-to-buy lists.</p>"
@@ -927,6 +933,140 @@ private:
             QString("Imported/merged %1 DMC color(s) from CSV.\nTotal colors for this pattern: %2")
                 .arg(importedColors.size())
                 .arg(parseDmcColors(patterns[index].colors).size())
+        );
+    }
+
+    QString sortedColorLines(const QSet<QString> &colors) const {
+        QStringList list;
+
+        for (const QString &color : colors) {
+            list.append(color);
+        }
+
+        list.sort(Qt::CaseInsensitive);
+        return list.join("\n");
+    }
+
+    void exportFilteredNeedToBuyList() {
+        if (ownedDmcColors.isEmpty()) {
+            QMessageBox::information(
+                this,
+                "Stash Not Loaded",
+                "No FlossKeeper stash colors are loaded. Check the stash path or click Reload Stash."
+            );
+            return;
+        }
+
+        if (table->rowCount() == 0) {
+            QMessageBox::information(
+                this,
+                "No Visible Patterns",
+                "There are no visible patterns to export. Check your search or filter."
+            );
+            return;
+        }
+
+        QSet<QString> allMissing;
+        QStringList byPattern;
+        int patternsWithMissing = 0;
+
+        for (int row = 0; row < table->rowCount(); ++row) {
+            QTableWidgetItem *nameItem = table->item(row, 0);
+
+            if (!nameItem) {
+                continue;
+            }
+
+            int index = nameItem->data(Qt::UserRole).toInt();
+
+            if (index < 0 || index >= patterns.size()) {
+                continue;
+            }
+
+            const Pattern &pattern = patterns[index];
+            QStringList missing = missingColorsFor(pattern);
+
+            if (missing.isEmpty()) {
+                continue;
+            }
+
+            missing.sort(Qt::CaseInsensitive);
+
+            for (const QString &color : missing) {
+                allMissing.insert(color);
+            }
+
+            byPattern.append(QString("%1: %2").arg(pattern.name).arg(missing.join(", ")));
+            patternsWithMissing++;
+        }
+
+        if (allMissing.isEmpty()) {
+            QMessageBox::information(
+                this,
+                "Nothing Missing",
+                "No missing DMC colors were found for the currently visible patterns."
+            );
+            return;
+        }
+
+        QString currentFilter = filterBox ? filterBox->currentText() : "All Patterns";
+        QString currentSearch = searchEdit ? searchEdit->text().trimmed() : "";
+
+        QString report;
+        report += "PatternShelf Need-to-Buy List\n";
+        report += "Generated: " + QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss") + "\n";
+        report += "Filter: " + currentFilter + "\n";
+
+        if (!currentSearch.isEmpty()) {
+            report += "Search: " + currentSearch + "\n";
+        }
+
+        report += "\nCombined missing DMC colors:\n";
+        report += sortedColorLines(allMissing);
+        report += "\n\nBy pattern:\n";
+        report += byPattern.join("\n");
+        report += "\n";
+
+        QString defaultName = QString("PatternShelf-need-to-buy-%1.txt")
+            .arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss"));
+
+        QString destination = QFileDialog::getSaveFileName(
+            this,
+            "Export Need-to-Buy List",
+            QDir::homePath() + "/" + defaultName,
+            "Text Files (*.txt);;All Files (*)"
+        );
+
+        if (destination.isEmpty()) {
+            return;
+        }
+
+        if (!destination.endsWith(".txt", Qt::CaseInsensitive)) {
+            destination += ".txt";
+        }
+
+        QFile file(destination);
+
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+            QMessageBox::warning(
+                this,
+                "Export Failed",
+                "PatternShelf could not write the need-to-buy list."
+            );
+            return;
+        }
+
+        file.write(report.toUtf8());
+        file.close();
+
+        QApplication::clipboard()->setText(report);
+
+        QMessageBox::information(
+            this,
+            "Need-to-Buy List Exported",
+            QString("Exported %1 unique missing DMC color(s) from %2 visible pattern(s).\n\nThe list was also copied to the clipboard.")
+                .arg(allMissing.size())
+                .arg(patternsWithMissing)
         );
     }
 
