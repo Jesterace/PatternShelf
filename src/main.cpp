@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QClipboard>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDialog>
@@ -288,6 +289,7 @@ public:
         auto *addButton = new QPushButton("Add Pattern");
         auto *importButton = new QPushButton("Import Pattern Folder");
         auto *reloadStashButton = new QPushButton("Reload Stash");
+        auto *copyBuyButton = new QPushButton("Copy Need-to-Buy List");
         auto *editButton = new QPushButton("Edit");
         auto *deleteButton = new QPushButton("Delete");
         auto *openButton = new QPushButton("Open PDF");
@@ -295,6 +297,7 @@ public:
         toolbar->addWidget(addButton);
         toolbar->addWidget(importButton);
         toolbar->addWidget(reloadStashButton);
+        toolbar->addWidget(copyBuyButton);
         toolbar->addWidget(editButton);
         toolbar->addWidget(deleteButton);
         toolbar->addWidget(openButton);
@@ -353,6 +356,10 @@ public:
 
         connect(reloadStashButton, &QPushButton::clicked, this, [this]() {
             reloadStash();
+        });
+
+        connect(copyBuyButton, &QPushButton::clicked, this, [this]() {
+            copyNeedToBuyList();
         });
 
         connect(editButton, &QPushButton::clicked, this, [this]() {
@@ -570,6 +577,61 @@ private:
         }
 
         return missing.join(", ");
+    }
+
+    void copyNeedToBuyList() {
+        int index = selectedPatternIndex();
+
+        if (index < 0 || index >= patterns.size()) {
+            QMessageBox::information(this, "No Pattern Selected", "Select a pattern first.");
+            return;
+        }
+
+        const Pattern &p = patterns[index];
+        QStringList patternColors = parseDmcColors(p.colors);
+
+        if (patternColors.isEmpty()) {
+            QMessageBox::information(
+                this,
+                "No DMC Colors",
+                "This pattern does not have any DMC colors listed yet."
+            );
+            return;
+        }
+
+        if (ownedDmcColors.isEmpty()) {
+            QMessageBox::information(
+                this,
+                "Stash Not Loaded",
+                "No FlossKeeper stash colors are loaded. Check the stash path or click Reload Stash."
+            );
+            return;
+        }
+
+        QStringList missing = missingColorsFor(p);
+
+        if (missing.isEmpty()) {
+            QApplication::clipboard()->setText(QString("No missing DMC colors for %1.").arg(p.name));
+
+            QMessageBox::information(
+                this,
+                "Nothing Missing",
+                "You already have all listed DMC colors for this pattern."
+            );
+            return;
+        }
+
+        QString text = QString("Need to buy for %1:\n%2")
+            .arg(p.name)
+            .arg(missing.join("\n"));
+
+        QApplication::clipboard()->setText(text);
+
+        QMessageBox::information(
+            this,
+            "Copied",
+            QString("Copied %1 missing DMC color(s) to the clipboard.").arg(missing.size())
+        );
     }
 
     QString inchPair(double width, double height) const {
