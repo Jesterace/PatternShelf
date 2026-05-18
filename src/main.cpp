@@ -305,9 +305,26 @@ public:
 
         layout->addLayout(toolbar);
 
+        auto *filterRow = new QHBoxLayout;
+
         searchEdit = new QLineEdit;
         searchEdit->setPlaceholderText("Search patterns...");
-        layout->addWidget(searchEdit);
+
+        filterBox = new QComboBox;
+        filterBox->addItems({
+            "All Patterns",
+            "Backlog",
+            "Not Started",
+            "In Progress",
+            "Finished",
+            "Missing Colors",
+            "Ready to Stitch"
+        });
+
+        filterRow->addWidget(searchEdit);
+        filterRow->addWidget(filterBox);
+
+        layout->addLayout(filterRow);
 
         stashLabel = new QLabel;
         stashLabel->setWordWrap(true);
@@ -378,6 +395,10 @@ public:
             refreshTable();
         });
 
+        connect(filterBox, &QComboBox::currentTextChanged, this, [this]() {
+            refreshTable();
+        });
+
         connect(table, &QTableWidget::itemSelectionChanged, this, [this]() {
             updateNotes();
         });
@@ -394,6 +415,7 @@ public:
 private:
     QTableWidget *table;
     QLineEdit *searchEdit;
+    QComboBox *filterBox;
     QLabel *notesLabel;
     QLabel *stashLabel;
     QVector<Pattern> patterns;
@@ -484,6 +506,36 @@ private:
             .toLower();
 
         return blob.contains(term.toLower());
+    }
+
+    bool matchesFilter(const Pattern &p) const {
+        if (!filterBox) {
+            return true;
+        }
+
+        QString filter = filterBox->currentText();
+
+        if (filter == "All Patterns") {
+            return true;
+        }
+
+        if (filter == "Missing Colors") {
+            if (ownedDmcColors.isEmpty()) {
+                return false;
+            }
+
+            return !parseDmcColors(p.colors).isEmpty() && !missingColorsFor(p).isEmpty();
+        }
+
+        if (filter == "Ready to Stitch") {
+            if (ownedDmcColors.isEmpty()) {
+                return false;
+            }
+
+            return !parseDmcColors(p.colors).isEmpty() && missingColorsFor(p).isEmpty();
+        }
+
+        return p.status == filter;
     }
 
     void updateStashLabel() {
@@ -673,7 +725,7 @@ private:
         for (int i = 0; i < patterns.size(); ++i) {
             const Pattern &p = patterns[i];
 
-            if (!matchesSearch(p, term)) {
+            if (!matchesSearch(p, term) || !matchesFilter(p)) {
                 continue;
             }
 
