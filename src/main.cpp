@@ -279,7 +279,7 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("PatternShelf v1.2");
+        setWindowTitle("PatternShelf v1.3");
         setWindowIcon(QIcon::fromTheme("patternshelf"));
         resize(1000, 600);
 
@@ -296,6 +296,7 @@ public:
         auto *addButton = new QPushButton("Add Pattern");
         auto *importButton = new QPushButton("Import Pattern Folder");
         auto *reloadStashButton = new QPushButton("Reload Stash");
+        auto *importCsvColorsButton = new QPushButton("Import Colors from CSV");
         auto *copyBuyButton = new QPushButton("Copy Need-to-Buy List");
         auto *editButton = new QPushButton("Edit");
         auto *deleteButton = new QPushButton("Delete");
@@ -304,6 +305,7 @@ public:
         toolbar->addWidget(addButton);
         toolbar->addWidget(importButton);
         toolbar->addWidget(reloadStashButton);
+        toolbar->addWidget(importCsvColorsButton);
         toolbar->addWidget(copyBuyButton);
         toolbar->addWidget(editButton);
         toolbar->addWidget(deleteButton);
@@ -383,6 +385,10 @@ public:
             reloadStash();
         });
 
+        connect(importCsvColorsButton, &QPushButton::clicked, this, [this]() {
+            importColorsFromCsvForSelected();
+        });
+
         connect(copyBuyButton, &QPushButton::clicked, this, [this]() {
             copyNeedToBuyList();
         });
@@ -443,7 +449,7 @@ private:
             QMessageBox::about(
                 this,
                 "About PatternShelf",
-                "<h3>PatternShelf v1.2</h3>"
+                "<h3>PatternShelf v1.3</h3>"
                 "<p>A personal cross-stitch pattern library manager.</p>"
                 "<p>Tracks pattern PDFs, stitch sizes, fabric cuts, DMC colors, "
                 "FlossKeeper stash matches, missing colors, and need-to-buy lists.</p>"
@@ -670,6 +676,64 @@ private:
         }
 
         return missing.join(", ");
+    }
+
+    void importColorsFromCsvForSelected() {
+        int index = selectedPatternIndex();
+
+        if (index < 0 || index >= patterns.size()) {
+            QMessageBox::information(this, "No Pattern Selected", "Select a pattern first.");
+            return;
+        }
+
+        QString csvPath = QFileDialog::getOpenFileName(
+            this,
+            "Import DMC Colors from CSV",
+            QDir::homePath(),
+            "CSV Files (*.csv);;All Files (*)"
+        );
+
+        if (csvPath.isEmpty()) {
+            return;
+        }
+
+        QStringList importedColors = colorsFromCsvFile(csvPath);
+
+        if (importedColors.isEmpty()) {
+            QMessageBox::warning(
+                this,
+                "No DMC Colors Found",
+                "PatternShelf could not find any DMC colors in that CSV file."
+            );
+            return;
+        }
+
+        QString before = patterns[index].colors;
+        QString merged = normalizedDmcColors(before + ", " + importedColors.join(", "));
+
+        patterns[index].colors = merged;
+
+        QFileInfo info(csvPath);
+        QString noteLine = QString("DMC colors imported from CSV: %1").arg(info.fileName());
+
+        if (!patterns[index].notes.contains(noteLine)) {
+            if (!patterns[index].notes.trimmed().isEmpty()) {
+                patterns[index].notes += "\n";
+            }
+
+            patterns[index].notes += noteLine;
+        }
+
+        savePatterns();
+        refreshTable();
+
+        QMessageBox::information(
+            this,
+            "DMC Colors Imported",
+            QString("Imported/merged %1 DMC color(s) from CSV.\nTotal colors for this pattern: %2")
+                .arg(importedColors.size())
+                .arg(parseDmcColors(patterns[index].colors).size())
+        );
     }
 
     void copyNeedToBuyList() {

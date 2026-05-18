@@ -9,6 +9,7 @@ It helps track pattern PDFs, stitch sizes, fabric planning, DMC colors, and miss
 - Add, edit, delete, and open pattern PDFs
 - Import pattern folders recursively
 - Import DMC colors from nearby CSV legend files
+- Manually import DMC colors from a selected CSV file
 - Search patterns
 - Filter by status:
   - All Patterns
