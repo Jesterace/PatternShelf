@@ -4,7 +4,9 @@
 #include <QDialog>
 #include <QDoubleSpinBox>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
+#include <QFileInfo>
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -180,7 +182,7 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("JesterPatternShelf v0.3");
+        setWindowTitle("JesterPatternShelf v0.4");
         resize(1000, 600);
 
         auto *central = new QWidget;
@@ -192,11 +194,13 @@ public:
         auto *toolbar = new QHBoxLayout;
 
         auto *addButton = new QPushButton("Add Pattern");
+        auto *importButton = new QPushButton("Import Pattern Folder");
         auto *editButton = new QPushButton("Edit");
         auto *deleteButton = new QPushButton("Delete");
         auto *openButton = new QPushButton("Open PDF");
 
         toolbar->addWidget(addButton);
+        toolbar->addWidget(importButton);
         toolbar->addWidget(editButton);
         toolbar->addWidget(deleteButton);
         toolbar->addWidget(openButton);
@@ -240,6 +244,10 @@ public:
 
         connect(addButton, &QPushButton::clicked, this, [this]() {
             addPattern();
+        });
+
+        connect(importButton, &QPushButton::clicked, this, [this]() {
+            importPatternFolder();
         });
 
         connect(editButton, &QPushButton::clicked, this, [this]() {
@@ -464,6 +472,90 @@ private:
             .arg(p.notes.isEmpty() ? "No notes." : p.notes.toHtmlEscaped());
 
         notesLabel->setText(text);
+    }
+
+    bool hasPdfPath(const QString &path) const {
+        for (const Pattern &p : patterns) {
+            if (QFileInfo(p.pdfPath).absoluteFilePath() == QFileInfo(path).absoluteFilePath()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    QString niceNameFromPdf(const QString &path) const {
+        QString name = QFileInfo(path).completeBaseName();
+        name.replace("_", " ");
+        name.replace("-", " ");
+
+        QStringList words = name.split(" ", Qt::SkipEmptyParts);
+        for (QString &word : words) {
+            if (!word.isEmpty()) {
+                word[0] = word[0].toUpper();
+            }
+        }
+
+        return words.join(" ");
+    }
+
+    void importPatternFolder() {
+        QString folder = QFileDialog::getExistingDirectory(
+            this,
+            "Import Pattern Folder",
+            QDir::homePath()
+        );
+
+        if (folder.isEmpty()) {
+            return;
+        }
+
+        QStringList filters;
+        filters << "*.pdf" << "*.PDF";
+
+        QDirIterator it(folder, filters, QDir::Files, QDirIterator::Subdirectories);
+
+        int imported = 0;
+        int skipped = 0;
+
+        while (it.hasNext()) {
+            QString pdfPath = it.next();
+
+            if (hasPdfPath(pdfPath)) {
+                skipped++;
+                continue;
+            }
+
+            QFileInfo info(pdfPath);
+
+            Pattern pattern;
+            pattern.name = niceNameFromPdf(pdfPath);
+            pattern.pdfPath = info.absoluteFilePath();
+            pattern.category = info.dir().dirName();
+            pattern.status = "Backlog";
+            pattern.stitchWidth = 0;
+            pattern.stitchHeight = 0;
+            pattern.fabricCount = 14;
+            pattern.borderInches = 2.0;
+            pattern.colors = "";
+            pattern.notes = QString("Imported from %1").arg(folder);
+
+            patterns.push_back(pattern);
+            imported++;
+        }
+
+        if (imported > 0) {
+            savePatterns();
+            refreshTable();
+        }
+
+        QMessageBox::information(
+            this,
+            "Import Complete",
+            QString("Imported %1 pattern PDF(s).\nSkipped %2 duplicate PDF(s).")
+                .arg(imported)
+                .arg(skipped)
+        );
     }
 
     void addPattern() {
