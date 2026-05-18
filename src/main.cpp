@@ -355,10 +355,11 @@ public:
 
         layout->addWidget(table);
 
-        notesLabel = new QLabel("Select a pattern to see notes.");
-        notesLabel->setWordWrap(true);
-        notesLabel->setMinimumHeight(60);
-        layout->addWidget(notesLabel);
+        detailsText = new QTextEdit;
+        detailsText->setReadOnly(true);
+        detailsText->setMinimumHeight(150);
+        detailsText->setPlaceholderText("Select a pattern to see details.");
+        layout->addWidget(detailsText);
 
         central->setLayout(layout);
         setCentralWidget(central);
@@ -416,7 +417,7 @@ private:
     QTableWidget *table;
     QLineEdit *searchEdit;
     QComboBox *filterBox;
-    QLabel *notesLabel;
+    QTextEdit *detailsText;
     QLabel *stashLabel;
     QVector<Pattern> patterns;
     QSet<QString> ownedDmcColors;
@@ -773,7 +774,7 @@ private:
         int index = selectedPatternIndex();
 
         if (index < 0 || index >= patterns.size()) {
-            notesLabel->setText("Select a pattern to see notes.");
+            detailsText->setPlainText("Select a pattern to see details.");
             return;
         }
 
@@ -784,22 +785,45 @@ private:
         QString missingCountText = missingColorCountText(p);
         QString missingList = missingColorListText(p).toHtmlEscaped();
 
-        QString text = QString("<b>%1</b><br>Status: %2<br>Stitches: %3 x %4<br>Design size: %5<br>Fabric cut: %6 with %7\" border<br>DMC colors: %8<br>Color count: %9<br>Have: %10<br>Missing: %11<br>Missing colors: %12<br>Notes: %13")
+        QString notesText = p.notes.isEmpty() ? "No notes." : p.notes.toHtmlEscaped();
+
+        QString text = QString(
+            "<h3>%1</h3>"
+            "<table cellspacing='4'>"
+            "<tr><td><b>Status:</b></td><td>%2</td></tr>"
+            "<tr><td><b>Category:</b></td><td>%3</td></tr>"
+            "<tr><td><b>Stitches:</b></td><td>%4 x %5</td></tr>"
+            "<tr><td><b>Aida count:</b></td><td>%6</td></tr>"
+            "<tr><td><b>Design size:</b></td><td>%7</td></tr>"
+            "<tr><td><b>Fabric cut:</b></td><td>%8 with %9&quot; border</td></tr>"
+            "<tr><td><b>Color count:</b></td><td>%10</td></tr>"
+            "<tr><td><b>Have:</b></td><td>%11</td></tr>"
+            "<tr><td><b>Missing:</b></td><td>%12</td></tr>"
+            "<tr><td><b>Missing colors:</b></td><td>%13</td></tr>"
+            "<tr><td><b>DMC colors:</b></td><td>%14</td></tr>"
+            "<tr><td><b>PDF:</b></td><td>%15</td></tr>"
+            "</table>"
+            "<p><b>Notes:</b></p>"
+            "<p>%16</p>"
+        )
             .arg(p.name.toHtmlEscaped())
             .arg(p.status.toHtmlEscaped())
+            .arg(p.category.isEmpty() ? "Uncategorized" : p.category.toHtmlEscaped())
             .arg(p.stitchWidth)
             .arg(p.stitchHeight)
+            .arg(p.fabricCount)
             .arg(designSizeText(p).toHtmlEscaped())
             .arg(fabricCutText(p).toHtmlEscaped())
             .arg(QString::number(p.borderInches, 'f', 1))
-            .arg(colorText)
             .arg(dmcColorCountText(p.colors))
             .arg(haveText)
             .arg(missingCountText)
             .arg(missingList)
-            .arg(p.notes.isEmpty() ? "No notes." : p.notes.toHtmlEscaped());
+            .arg(colorText)
+            .arg(p.pdfPath.isEmpty() ? "No PDF set." : p.pdfPath.toHtmlEscaped())
+            .arg(notesText);
 
-        notesLabel->setText(text);
+        detailsText->setHtml(text);
     }
 
     bool hasPdfPath(const QString &path) const {
