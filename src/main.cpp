@@ -26,6 +26,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSet>
+#include <QSettings>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QTableWidget>
@@ -101,8 +102,18 @@ static QString dmcColorCountText(const QString &input) {
     return QString::number(parseDmcColors(input).size());
 }
 
-static QString defaultStashPath() {
+static QString builtInDefaultStashPath() {
     return QDir::homePath() + "/FlossKeeperSync/flosskeeper_collection.tsv";
+}
+
+static QString configuredStashPath() {
+    QSettings settings("Jesterace", "PatternShelf");
+    return settings.value("stash/path", builtInDefaultStashPath()).toString();
+}
+
+static void saveConfiguredStashPath(const QString &path) {
+    QSettings settings("Jesterace", "PatternShelf");
+    settings.setValue("stash/path", path);
 }
 
 static QSet<QString> loadOwnedDmcColorsFromFile(const QString &path) {
@@ -279,7 +290,7 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("PatternShelf v1.3");
+        setWindowTitle("PatternShelf v1.4");
         setWindowIcon(QIcon::fromTheme("patternshelf"));
         resize(1000, 600);
 
@@ -296,6 +307,7 @@ public:
         auto *addButton = new QPushButton("Add Pattern");
         auto *importButton = new QPushButton("Import Pattern Folder");
         auto *reloadStashButton = new QPushButton("Reload Stash");
+        auto *setStashPathButton = new QPushButton("Set Stash Path");
         auto *importCsvColorsButton = new QPushButton("Import Colors from CSV");
         auto *copyBuyButton = new QPushButton("Copy Need-to-Buy List");
         auto *editButton = new QPushButton("Edit");
@@ -305,6 +317,7 @@ public:
         toolbar->addWidget(addButton);
         toolbar->addWidget(importButton);
         toolbar->addWidget(reloadStashButton);
+        toolbar->addWidget(setStashPathButton);
         toolbar->addWidget(importCsvColorsButton);
         toolbar->addWidget(copyBuyButton);
         toolbar->addWidget(editButton);
@@ -385,6 +398,10 @@ public:
             reloadStash();
         });
 
+        connect(setStashPathButton, &QPushButton::clicked, this, [this]() {
+            chooseStashPath();
+        });
+
         connect(importCsvColorsButton, &QPushButton::clicked, this, [this]() {
             importColorsFromCsvForSelected();
         });
@@ -449,7 +466,7 @@ private:
             QMessageBox::about(
                 this,
                 "About PatternShelf",
-                "<h3>PatternShelf v1.3</h3>"
+                "<h3>PatternShelf v1.4</h3>"
                 "<p>A personal cross-stitch pattern library manager.</p>"
                 "<p>Tracks pattern PDFs, stitch sizes, fabric cuts, DMC colors, "
                 "FlossKeeper stash matches, missing colors, and need-to-buy lists.</p>"
@@ -585,8 +602,37 @@ private:
         return p.status == filter;
     }
 
+    void chooseStashPath() {
+        QString currentPath = configuredStashPath();
+        QFileInfo currentInfo(currentPath);
+
+        QString startDir = currentInfo.exists()
+            ? currentInfo.absolutePath()
+            : QDir::homePath();
+
+        QString path = QFileDialog::getOpenFileName(
+            this,
+            "Choose FlossKeeper Stash TSV",
+            startDir,
+            "TSV Files (*.tsv);;Text Files (*.txt);;All Files (*)"
+        );
+
+        if (path.isEmpty()) {
+            return;
+        }
+
+        saveConfiguredStashPath(path);
+        reloadStash(false);
+
+        QMessageBox::information(
+            this,
+            "Stash Path Updated",
+            QString("FlossKeeper stash path set to:\n%1").arg(path)
+        );
+    }
+
     void updateStashLabel() {
-        QString path = defaultStashPath();
+        QString path = configuredStashPath();
 
         if (!QFileInfo::exists(path)) {
             stashLabel->setText(QString("FlossKeeper stash not found: %1").arg(path.toHtmlEscaped()));
@@ -601,7 +647,7 @@ private:
     }
 
     void reloadStash(bool showMessage = true) {
-        ownedDmcColors = loadOwnedDmcColorsFromFile(defaultStashPath());
+        ownedDmcColors = loadOwnedDmcColorsFromFile(configuredStashPath());
         updateStashLabel();
         refreshTable();
 

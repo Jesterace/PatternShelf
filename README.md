@@ -28,12 +28,13 @@ It helps track pattern PDFs, stitch sizes, fabric planning, DMC colors, and miss
 - Compare pattern colors against FlossKeeper stash
 - Show have/missing color counts
 - Copy a need-to-buy list to the clipboard
+- Configurable FlossKeeper stash path
 - Polished pattern details panel
 - Local Linux desktop launcher
 
 ## FlossKeeper stash path
 
-PatternShelf currently checks this file:
+PatternShelf defaults to this file:
 
 ```text
 /home/jared/FlossKeeperSync/flosskeeper_collection.tsv
