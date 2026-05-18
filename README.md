@@ -29,6 +29,7 @@ It helps track pattern PDFs, stitch sizes, fabric planning, DMC colors, and miss
 - Show have/missing color counts
 - Copy a need-to-buy list to the clipboard
 - Configurable FlossKeeper stash path
+- Backup and restore the PatternShelf library JSON file
 - Polished pattern details panel
 - Local Linux desktop launcher
 

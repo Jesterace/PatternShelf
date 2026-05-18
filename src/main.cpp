@@ -2,6 +2,7 @@
 #include <QAction>
 #include <QClipboard>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDoubleSpinBox>
@@ -290,7 +291,7 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("PatternShelf v1.4");
+        setWindowTitle("PatternShelf v1.5");
         setWindowIcon(QIcon::fromTheme("patternshelf"));
         resize(1000, 600);
 
@@ -309,6 +310,8 @@ public:
         auto *reloadStashButton = new QPushButton("Reload Stash");
         auto *setStashPathButton = new QPushButton("Set Stash Path");
         auto *importCsvColorsButton = new QPushButton("Import Colors from CSV");
+        auto *backupLibraryButton = new QPushButton("Backup Library");
+        auto *restoreLibraryButton = new QPushButton("Restore Library");
         auto *copyBuyButton = new QPushButton("Copy Need-to-Buy List");
         auto *editButton = new QPushButton("Edit");
         auto *deleteButton = new QPushButton("Delete");
@@ -319,6 +322,8 @@ public:
         toolbar->addWidget(reloadStashButton);
         toolbar->addWidget(setStashPathButton);
         toolbar->addWidget(importCsvColorsButton);
+        toolbar->addWidget(backupLibraryButton);
+        toolbar->addWidget(restoreLibraryButton);
         toolbar->addWidget(copyBuyButton);
         toolbar->addWidget(editButton);
         toolbar->addWidget(deleteButton);
@@ -406,6 +411,14 @@ public:
             importColorsFromCsvForSelected();
         });
 
+        connect(backupLibraryButton, &QPushButton::clicked, this, [this]() {
+            backupLibrary();
+        });
+
+        connect(restoreLibraryButton, &QPushButton::clicked, this, [this]() {
+            restoreLibrary();
+        });
+
         connect(copyBuyButton, &QPushButton::clicked, this, [this]() {
             copyNeedToBuyList();
         });
@@ -466,7 +479,7 @@ private:
             QMessageBox::about(
                 this,
                 "About PatternShelf",
-                "<h3>PatternShelf v1.4</h3>"
+                "<h3>PatternShelf v1.5</h3>"
                 "<p>A personal cross-stitch pattern library manager.</p>"
                 "<p>Tracks pattern PDFs, stitch sizes, fabric cuts, DMC colors, "
                 "FlossKeeper stash matches, missing colors, and need-to-buy lists.</p>"
@@ -722,6 +735,141 @@ private:
         }
 
         return missing.join(", ");
+    }
+
+    bool isValidLibraryJson(const QString &path) const {
+        QFile file(path);
+
+        if (!file.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &error);
+
+        if (error.error != QJsonParseError::NoError) {
+            return false;
+        }
+
+        return doc.isArray();
+    }
+
+    bool copyFileReplacing(const QString &source, const QString &destination) {
+        if (!QFile::exists(source)) {
+            return false;
+        }
+
+        if (QFile::exists(destination)) {
+            if (!QFile::remove(destination)) {
+                return false;
+            }
+        }
+
+        return QFile::copy(source, destination);
+    }
+
+    void backupLibrary() {
+        savePatterns();
+
+        QString source = dataFilePath();
+
+        if (!QFile::exists(source)) {
+            QMessageBox::information(
+                this,
+                "No Library Yet",
+                "There is no PatternShelf library file to back up yet."
+            );
+            return;
+        }
+
+        QString defaultName = QString("PatternShelf-backup-%1.json")
+            .arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss"));
+
+        QString destination = QFileDialog::getSaveFileName(
+            this,
+            "Backup PatternShelf Library",
+            QDir::homePath() + "/" + defaultName,
+            "JSON Files (*.json);;All Files (*)"
+        );
+
+        if (destination.isEmpty()) {
+            return;
+        }
+
+        if (!destination.endsWith(".json", Qt::CaseInsensitive)) {
+            destination += ".json";
+        }
+
+        if (!copyFileReplacing(source, destination)) {
+            QMessageBox::warning(
+                this,
+                "Backup Failed",
+                "PatternShelf could not create the backup file."
+            );
+            return;
+        }
+
+        QMessageBox::information(
+            this,
+            "Backup Complete",
+            QString("PatternShelf library backed up to:\n%1").arg(destination)
+        );
+    }
+
+    void restoreLibrary() {
+        QString source = QFileDialog::getOpenFileName(
+            this,
+            "Restore PatternShelf Library",
+            QDir::homePath(),
+            "JSON Files (*.json);;All Files (*)"
+        );
+
+        if (source.isEmpty()) {
+            return;
+        }
+
+        if (!isValidLibraryJson(source)) {
+            QMessageBox::warning(
+                this,
+                "Invalid Backup",
+                "That file does not look like a valid PatternShelf JSON library backup."
+            );
+            return;
+        }
+
+        int answer = QMessageBox::question(
+            this,
+            "Restore Library",
+            "Restore this PatternShelf library backup?\n\n"
+            "This will replace the current PatternShelf library. "
+            "The selected backup file will not be changed."
+        );
+
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
+
+        QString destination = dataFilePath();
+        QDir().mkpath(QFileInfo(destination).absolutePath());
+
+        if (!copyFileReplacing(source, destination)) {
+            QMessageBox::warning(
+                this,
+                "Restore Failed",
+                "PatternShelf could not restore the selected backup file."
+            );
+            return;
+        }
+
+        loadPatterns();
+        reloadStash(false);
+        refreshTable();
+
+        QMessageBox::information(
+            this,
+            "Restore Complete",
+            "PatternShelf library restored successfully."
+        );
     }
 
     void importColorsFromCsvForSelected() {
