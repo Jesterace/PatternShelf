@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=JesterPatternShelf
+Name=PatternShelf
 Comment=Cross-stitch pattern library manager
-Exec=jesterpatternshelf
-Icon=jesterpatternshelf
+Exec=patternshelf
+Icon=patternshelf
 Terminal=false
 Categories=Graphics;Utility;

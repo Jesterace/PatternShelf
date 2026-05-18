@@ -279,8 +279,8 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("JesterPatternShelf v1.0");
-        setWindowIcon(QIcon::fromTheme("jesterpatternshelf"));
+        setWindowTitle("PatternShelf v1.0");
+        setWindowIcon(QIcon::fromTheme("patternshelf"));
         resize(1000, 600);
 
         createMenus();
@@ -288,7 +288,7 @@ public:
         auto *central = new QWidget;
         auto *layout = new QVBoxLayout;
 
-        auto *title = new QLabel("<h2>JesterPatternShelf</h2>");
+        auto *title = new QLabel("<h2>PatternShelf</h2>");
         layout->addWidget(title);
 
         auto *toolbar = new QHBoxLayout;
@@ -438,12 +438,12 @@ private:
 
         auto *helpMenu = menuBar()->addMenu("&Help");
 
-        auto *aboutAction = helpMenu->addAction("&About JesterPatternShelf");
+        auto *aboutAction = helpMenu->addAction("&About PatternShelf");
         connect(aboutAction, &QAction::triggered, this, [this]() {
             QMessageBox::about(
                 this,
-                "About JesterPatternShelf",
-                "<h3>JesterPatternShelf v1.0</h3>"
+                "About PatternShelf",
+                "<h3>PatternShelf v1.0</h3>"
                 "<p>A personal cross-stitch pattern library manager.</p>"
                 "<p>Tracks pattern PDFs, stitch sizes, fabric cuts, DMC colors, "
                 "FlossKeeper stash matches, missing colors, and need-to-buy lists.</p>"
@@ -1025,7 +1025,7 @@ private:
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
 
-    QApplication::setApplicationName("JesterPatternShelf");
+    QApplication::setApplicationName("PatternShelf");
     QApplication::setOrganizationName("Jesterace");
 
     MainWindow window;

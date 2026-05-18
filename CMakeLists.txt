@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(JesterPatternShelf VERSION 1.0.0 LANGUAGES CXX)
+project(PatternShelf VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,21 +9,20 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
 qt_standard_project_setup()
 
-qt_add_executable(jesterpatternshelf
+qt_add_executable(patternshelf
     src/main.cpp
 )
 
-target_link_libraries(jesterpatternshelf PRIVATE Qt6::Widgets)
+target_link_libraries(patternshelf PRIVATE Qt6::Widgets)
 
-install(TARGETS jesterpatternshelf
+install(TARGETS patternshelf
     RUNTIME DESTINATION bin
 )
 
-install(FILES packaging/jesterpatternshelf.desktop
+install(FILES packaging/patternshelf.desktop
     DESTINATION share/applications
 )
 
-
-install(FILES packaging/jesterpatternshelf.svg
+install(FILES packaging/patternshelf.svg
     DESTINATION share/icons/hicolor/scalable/apps
 )
