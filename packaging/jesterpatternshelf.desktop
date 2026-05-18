@@ -3,5 +3,6 @@ Type=Application
 Name=JesterPatternShelf
 Comment=Cross-stitch pattern library manager
 Exec=jesterpatternshelf
+Icon=jesterpatternshelf
 Terminal=false
 Categories=Graphics;Utility;

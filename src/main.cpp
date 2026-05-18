@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QAction>
 #include <QClipboard>
 #include <QComboBox>
 #include <QDesktopServices>
@@ -12,6 +13,7 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -19,6 +21,8 @@
 #include <QLineEdit>
 #include <QMainWindow>
 #include <QMessageBox>
+#include <QMenu>
+#include <QMenuBar>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSet>
@@ -275,8 +279,11 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("JesterPatternShelf v0.6");
+        setWindowTitle("JesterPatternShelf v1.0");
+        setWindowIcon(QIcon::fromTheme("jesterpatternshelf"));
         resize(1000, 600);
+
+        createMenus();
 
         auto *central = new QWidget;
         auto *layout = new QVBoxLayout;
@@ -414,6 +421,39 @@ public:
     }
 
 private:
+    void createMenus() {
+        auto *fileMenu = menuBar()->addMenu("&File");
+
+        auto *openPdfAction = fileMenu->addAction("&Open Selected PDF");
+        connect(openPdfAction, &QAction::triggered, this, [this]() {
+            openPdf();
+        });
+
+        fileMenu->addSeparator();
+
+        auto *quitAction = fileMenu->addAction("&Quit");
+        connect(quitAction, &QAction::triggered, this, [this]() {
+            close();
+        });
+
+        auto *helpMenu = menuBar()->addMenu("&Help");
+
+        auto *aboutAction = helpMenu->addAction("&About JesterPatternShelf");
+        connect(aboutAction, &QAction::triggered, this, [this]() {
+            QMessageBox::about(
+                this,
+                "About JesterPatternShelf",
+                "<h3>JesterPatternShelf v1.0</h3>"
+                "<p>A personal cross-stitch pattern library manager.</p>"
+                "<p>Tracks pattern PDFs, stitch sizes, fabric cuts, DMC colors, "
+                "FlossKeeper stash matches, missing colors, and need-to-buy lists.</p>"
+            );
+        });
+
+        auto *aboutQtAction = helpMenu->addAction("About &Qt");
+        connect(aboutQtAction, &QAction::triggered, qApp, &QApplication::aboutQt);
+    }
+
     QTableWidget *table;
     QLineEdit *searchEdit;
     QComboBox *filterBox;

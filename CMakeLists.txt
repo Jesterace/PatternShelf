@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(JesterPatternShelf VERSION 0.6.0 LANGUAGES CXX)
+project(JesterPatternShelf VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,4 +21,9 @@ install(TARGETS jesterpatternshelf
 
 install(FILES packaging/jesterpatternshelf.desktop
     DESTINATION share/applications
+)
+
+
+install(FILES packaging/jesterpatternshelf.svg
+    DESTINATION share/icons/hicolor/scalable/apps
 )
