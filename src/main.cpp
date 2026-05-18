@@ -20,6 +20,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QTableWidget>
@@ -39,6 +40,27 @@ struct Pattern {
     QString colors;
     QString notes;
 };
+
+static QString normalizeDmcColorToken(const QString &input) {
+    QRegularExpression rx(
+        "^\\s*(?:DMC\\s*)?(B5200|BLANC|WHITE|ECRU|[0-9]{1,4})\\b",
+        QRegularExpression::CaseInsensitiveOption
+    );
+
+    QRegularExpressionMatch match = rx.match(input);
+
+    if (!match.hasMatch()) {
+        return "";
+    }
+
+    QString color = match.captured(1).trimmed().toUpper();
+
+    if (color == "WHITE") {
+        color = "BLANC";
+    }
+
+    return color;
+}
 
 static QStringList parseDmcColors(const QString &input) {
     QStringList colors;
@@ -72,6 +94,41 @@ static QString normalizedDmcColors(const QString &input) {
 
 static QString dmcColorCountText(const QString &input) {
     return QString::number(parseDmcColors(input).size());
+}
+
+static QString defaultStashPath() {
+    return QDir::homePath() + "/FlossKeeperSync/flosskeeper_collection.tsv";
+}
+
+static QSet<QString> loadOwnedDmcColorsFromFile(const QString &path) {
+    QSet<QString> owned;
+
+    QFile file(path);
+
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return owned;
+    }
+
+    while (!file.atEnd()) {
+        QString line = QString::fromUtf8(file.readLine()).trimmed();
+
+        if (line.isEmpty()) {
+            continue;
+        }
+
+        QStringList fields = line.split('\t');
+
+        for (int i = 0; i < fields.size() && i < 3; ++i) {
+            QString color = normalizeDmcColorToken(fields[i]);
+
+            if (!color.isEmpty()) {
+                owned.insert(color);
+                break;
+            }
+        }
+    }
+
+    return owned;
 }
 
 static QString dataFilePath() {
@@ -217,7 +274,7 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("JesterPatternShelf v0.5");
+        setWindowTitle("JesterPatternShelf v0.6");
         resize(1000, 600);
 
         auto *central = new QWidget;
@@ -230,12 +287,14 @@ public:
 
         auto *addButton = new QPushButton("Add Pattern");
         auto *importButton = new QPushButton("Import Pattern Folder");
+        auto *reloadStashButton = new QPushButton("Reload Stash");
         auto *editButton = new QPushButton("Edit");
         auto *deleteButton = new QPushButton("Delete");
         auto *openButton = new QPushButton("Open PDF");
 
         toolbar->addWidget(addButton);
         toolbar->addWidget(importButton);
+        toolbar->addWidget(reloadStashButton);
         toolbar->addWidget(editButton);
         toolbar->addWidget(deleteButton);
         toolbar->addWidget(openButton);
@@ -247,8 +306,12 @@ public:
         searchEdit->setPlaceholderText("Search patterns...");
         layout->addWidget(searchEdit);
 
+        stashLabel = new QLabel;
+        stashLabel->setWordWrap(true);
+        layout->addWidget(stashLabel);
+
         table = new QTableWidget;
-        table->setColumnCount(10);
+        table->setColumnCount(12);
         table->setHorizontalHeaderLabels({
             "Name",
             "Status",
@@ -258,6 +321,8 @@ public:
             "Border",
             "Fabric Cut",
             "Color Count",
+            "Have",
+            "Missing",
             "DMC Colors",
             "PDF"
         });
@@ -286,6 +351,10 @@ public:
             importPatternFolder();
         });
 
+        connect(reloadStashButton, &QPushButton::clicked, this, [this]() {
+            reloadStash();
+        });
+
         connect(editButton, &QPushButton::clicked, this, [this]() {
             editPattern();
         });
@@ -311,6 +380,7 @@ public:
         });
 
         loadPatterns();
+        reloadStash(false);
         refreshTable();
     }
 
@@ -318,7 +388,9 @@ private:
     QTableWidget *table;
     QLineEdit *searchEdit;
     QLabel *notesLabel;
+    QLabel *stashLabel;
     QVector<Pattern> patterns;
+    QSet<QString> ownedDmcColors;
 
     void loadPatterns() {
         QFile file(dataFilePath());
@@ -407,6 +479,99 @@ private:
         return blob.contains(term.toLower());
     }
 
+    void updateStashLabel() {
+        QString path = defaultStashPath();
+
+        if (!QFileInfo::exists(path)) {
+            stashLabel->setText(QString("FlossKeeper stash not found: %1").arg(path.toHtmlEscaped()));
+            return;
+        }
+
+        stashLabel->setText(
+            QString("FlossKeeper stash loaded: %1 owned DMC color(s) from %2")
+                .arg(ownedDmcColors.size())
+                .arg(path.toHtmlEscaped())
+        );
+    }
+
+    void reloadStash(bool showMessage = true) {
+        ownedDmcColors = loadOwnedDmcColorsFromFile(defaultStashPath());
+        updateStashLabel();
+        refreshTable();
+
+        if (showMessage) {
+            QMessageBox::information(
+                this,
+                "Stash Reloaded",
+                QString("Loaded %1 owned DMC color(s).").arg(ownedDmcColors.size())
+            );
+        }
+    }
+
+    QStringList missingColorsFor(const Pattern &p) const {
+        QStringList missing;
+
+        if (ownedDmcColors.isEmpty()) {
+            return missing;
+        }
+
+        for (const QString &color : parseDmcColors(p.colors)) {
+            if (!ownedDmcColors.contains(color)) {
+                missing.append(color);
+            }
+        }
+
+        return missing;
+    }
+
+    int haveColorCountFor(const Pattern &p) const {
+        if (ownedDmcColors.isEmpty()) {
+            return -1;
+        }
+
+        int have = 0;
+
+        for (const QString &color : parseDmcColors(p.colors)) {
+            if (ownedDmcColors.contains(color)) {
+                have++;
+            }
+        }
+
+        return have;
+    }
+
+    QString haveColorCountText(const Pattern &p) const {
+        int count = haveColorCountFor(p);
+
+        if (count < 0) {
+            return "—";
+        }
+
+        return QString::number(count);
+    }
+
+    QString missingColorCountText(const Pattern &p) const {
+        if (ownedDmcColors.isEmpty()) {
+            return "—";
+        }
+
+        return QString::number(missingColorsFor(p).size());
+    }
+
+    QString missingColorListText(const Pattern &p) const {
+        if (ownedDmcColors.isEmpty()) {
+            return "Stash not loaded.";
+        }
+
+        QStringList missing = missingColorsFor(p);
+
+        if (missing.isEmpty()) {
+            return "None.";
+        }
+
+        return missing.join(", ");
+    }
+
     QString inchPair(double width, double height) const {
         return QString("%1\" x %2\"")
             .arg(QString::number(width, 'f', 2))
@@ -464,8 +629,10 @@ private:
             table->setItem(row, 5, new QTableWidgetItem(QString("%1\"").arg(QString::number(p.borderInches, 'f', 1))));
             table->setItem(row, 6, new QTableWidgetItem(fabricCutText(p)));
             table->setItem(row, 7, new QTableWidgetItem(dmcColorCountText(p.colors)));
-            table->setItem(row, 8, new QTableWidgetItem(p.colors));
-            table->setItem(row, 9, new QTableWidgetItem(p.pdfPath));
+            table->setItem(row, 8, new QTableWidgetItem(haveColorCountText(p)));
+            table->setItem(row, 9, new QTableWidgetItem(missingColorCountText(p)));
+            table->setItem(row, 10, new QTableWidgetItem(p.colors));
+            table->setItem(row, 11, new QTableWidgetItem(p.pdfPath));
         }
 
         updateNotes();
@@ -499,8 +666,11 @@ private:
         const Pattern &p = patterns[index];
 
         QString colorText = p.colors.isEmpty() ? "None listed." : p.colors.toHtmlEscaped();
+        QString haveText = haveColorCountText(p);
+        QString missingCountText = missingColorCountText(p);
+        QString missingList = missingColorListText(p).toHtmlEscaped();
 
-        QString text = QString("<b>%1</b><br>Status: %2<br>Stitches: %3 x %4<br>Design size: %5<br>Fabric cut: %6 with %7\" border<br>DMC colors: %8<br>Color count: %9<br>Notes: %10")
+        QString text = QString("<b>%1</b><br>Status: %2<br>Stitches: %3 x %4<br>Design size: %5<br>Fabric cut: %6 with %7\" border<br>DMC colors: %8<br>Color count: %9<br>Have: %10<br>Missing: %11<br>Missing colors: %12<br>Notes: %13")
             .arg(p.name.toHtmlEscaped())
             .arg(p.status.toHtmlEscaped())
             .arg(p.stitchWidth)
@@ -510,6 +680,9 @@ private:
             .arg(QString::number(p.borderInches, 'f', 1))
             .arg(colorText)
             .arg(dmcColorCountText(p.colors))
+            .arg(haveText)
+            .arg(missingCountText)
+            .arg(missingList)
             .arg(p.notes.isEmpty() ? "No notes." : p.notes.toHtmlEscaped());
 
         notesLabel->setText(text);
