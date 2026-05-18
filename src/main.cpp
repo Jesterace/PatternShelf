@@ -2,6 +2,7 @@
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDialog>
+#include <QDoubleSpinBox>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -31,6 +32,7 @@ struct Pattern {
     int stitchWidth = 0;
     int stitchHeight = 0;
     int fabricCount = 14;
+    double borderInches = 2.0;
     QString colors;
     QString notes;
 };
@@ -66,6 +68,13 @@ public:
         fabricSpin->setRange(6, 40);
         fabricSpin->setValue(14);
 
+        borderSpin = new QDoubleSpinBox;
+        borderSpin->setRange(0.0, 6.0);
+        borderSpin->setSingleStep(0.5);
+        borderSpin->setDecimals(1);
+        borderSpin->setSuffix("\"");
+        borderSpin->setValue(2.0);
+
         colorsEdit = new QLineEdit;
         colorsEdit->setPlaceholderText("Example: 310, 3843, 742");
 
@@ -97,6 +106,7 @@ public:
         form->addRow("Stitch width:", widthSpin);
         form->addRow("Stitch height:", heightSpin);
         form->addRow("Fabric count:", fabricSpin);
+        form->addRow("Border size:", borderSpin);
         form->addRow("DMC colors:", colorsEdit);
         form->addRow("Notes:", notesEdit);
 
@@ -133,6 +143,7 @@ public:
             widthSpin->setValue(existing->stitchWidth);
             heightSpin->setValue(existing->stitchHeight);
             fabricSpin->setValue(existing->fabricCount);
+            borderSpin->setValue(existing->borderInches);
             colorsEdit->setText(existing->colors);
             notesEdit->setPlainText(existing->notes);
         }
@@ -147,6 +158,7 @@ public:
         p.stitchWidth = widthSpin->value();
         p.stitchHeight = heightSpin->value();
         p.fabricCount = fabricSpin->value();
+        p.borderInches = borderSpin->value();
         p.colors = colorsEdit->text().trimmed();
         p.notes = notesEdit->toPlainText().trimmed();
         return p;
@@ -160,6 +172,7 @@ private:
     QSpinBox *widthSpin;
     QSpinBox *heightSpin;
     QSpinBox *fabricSpin;
+    QDoubleSpinBox *borderSpin;
     QLineEdit *colorsEdit;
     QTextEdit *notesEdit;
 };
@@ -167,7 +180,7 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("JesterPatternShelf v0.1");
+        setWindowTitle("JesterPatternShelf v0.3");
         resize(1000, 600);
 
         auto *central = new QWidget;
@@ -196,13 +209,15 @@ public:
         layout->addWidget(searchEdit);
 
         table = new QTableWidget;
-        table->setColumnCount(7);
+        table->setColumnCount(9);
         table->setHorizontalHeaderLabels({
             "Name",
             "Status",
             "Category",
-            "Size",
+            "Stitches",
             "Aida",
+            "Border",
+            "Fabric Cut",
             "Colors",
             "PDF"
         });
@@ -293,6 +308,7 @@ private:
             p.stitchWidth = obj["stitchWidth"].toInt();
             p.stitchHeight = obj["stitchHeight"].toInt();
             p.fabricCount = obj["fabricCount"].toInt(14);
+            p.borderInches = obj["borderInches"].toDouble(2.0);
             p.colors = obj["colors"].toString();
             p.notes = obj["notes"].toString();
 
@@ -314,6 +330,7 @@ private:
             obj["stitchWidth"] = p.stitchWidth;
             obj["stitchHeight"] = p.stitchHeight;
             obj["fabricCount"] = p.fabricCount;
+            obj["borderInches"] = p.borderInches;
             obj["colors"] = p.colors;
             obj["notes"] = p.notes;
             array.append(obj);
@@ -346,6 +363,37 @@ private:
         return blob.contains(term.toLower());
     }
 
+    QString inchPair(double width, double height) const {
+        return QString("%1\" x %2\"")
+            .arg(QString::number(width, 'f', 2))
+            .arg(QString::number(height, 'f', 2));
+    }
+
+    QString designSizeText(const Pattern &p) const {
+        if (p.stitchWidth <= 0 || p.stitchHeight <= 0 || p.fabricCount <= 0) {
+            return "Unknown";
+        }
+
+        double width = static_cast<double>(p.stitchWidth) / p.fabricCount;
+        double height = static_cast<double>(p.stitchHeight) / p.fabricCount;
+
+        return inchPair(width, height);
+    }
+
+    QString fabricCutText(const Pattern &p) const {
+        if (p.stitchWidth <= 0 || p.stitchHeight <= 0 || p.fabricCount <= 0) {
+            return "Unknown";
+        }
+
+        double designWidth = static_cast<double>(p.stitchWidth) / p.fabricCount;
+        double designHeight = static_cast<double>(p.stitchHeight) / p.fabricCount;
+
+        double cutWidth = designWidth + (p.borderInches * 2.0);
+        double cutHeight = designHeight + (p.borderInches * 2.0);
+
+        return inchPair(cutWidth, cutHeight);
+    }
+
     void refreshTable() {
         QString term = searchEdit->text().trimmed();
 
@@ -369,8 +417,10 @@ private:
             table->setItem(row, 2, new QTableWidgetItem(p.category));
             table->setItem(row, 3, new QTableWidgetItem(QString("%1 x %2").arg(p.stitchWidth).arg(p.stitchHeight)));
             table->setItem(row, 4, new QTableWidgetItem(QString::number(p.fabricCount)));
-            table->setItem(row, 5, new QTableWidgetItem(p.colors));
-            table->setItem(row, 6, new QTableWidgetItem(p.pdfPath));
+            table->setItem(row, 5, new QTableWidgetItem(QString("%1\"").arg(QString::number(p.borderInches, 'f', 1))));
+            table->setItem(row, 6, new QTableWidgetItem(fabricCutText(p)));
+            table->setItem(row, 7, new QTableWidgetItem(p.colors));
+            table->setItem(row, 8, new QTableWidgetItem(p.pdfPath));
         }
 
         updateNotes();
@@ -403,9 +453,14 @@ private:
 
         const Pattern &p = patterns[index];
 
-        QString text = QString("<b>%1</b><br>Status: %2<br>Notes: %3")
+        QString text = QString("<b>%1</b><br>Status: %2<br>Stitches: %3 x %4<br>Design size: %5<br>Fabric cut: %6 with %7\" border<br>Notes: %8")
             .arg(p.name.toHtmlEscaped())
             .arg(p.status.toHtmlEscaped())
+            .arg(p.stitchWidth)
+            .arg(p.stitchHeight)
+            .arg(designSizeText(p).toHtmlEscaped())
+            .arg(fabricCutText(p).toHtmlEscaped())
+            .arg(QString::number(p.borderInches, 'f', 1))
             .arg(p.notes.isEmpty() ? "No notes." : p.notes.toHtmlEscaped());
 
         notesLabel->setText(text);
