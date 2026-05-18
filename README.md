@@ -4,6 +4,10 @@ PatternShelf is a personal cross-stitch pattern library manager built with Qt/C+
 
 It helps track pattern PDFs, stitch sizes, fabric planning, DMC colors, and missing colors based on a FlossKeeper stash file.
 
+## Screenshot
+
+![PatternShelf main window](screenshots/patternshelf-main.png)
+
 ## Features
 
 - Add, edit, delete, and open pattern PDFs
