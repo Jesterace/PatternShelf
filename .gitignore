@@ -2,3 +2,9 @@ build/
 *.user
 *.autosave
 .DS_Store
+
+# AppImage packaging
+AppDir/
+build-appimage/
+dist/
+tools/*.AppImage
