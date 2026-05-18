@@ -279,7 +279,7 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("PatternShelf v1.0");
+        setWindowTitle("PatternShelf v1.2");
         setWindowIcon(QIcon::fromTheme("patternshelf"));
         resize(1000, 600);
 
@@ -443,7 +443,7 @@ private:
             QMessageBox::about(
                 this,
                 "About PatternShelf",
-                "<h3>PatternShelf v1.0</h3>"
+                "<h3>PatternShelf v1.2</h3>"
                 "<p>A personal cross-stitch pattern library manager.</p>"
                 "<p>Tracks pattern PDFs, stitch sizes, fabric cuts, DMC colors, "
                 "FlossKeeper stash matches, missing colors, and need-to-buy lists.</p>"
@@ -866,14 +866,20 @@ private:
         detailsText->setHtml(text);
     }
 
-    bool hasPdfPath(const QString &path) const {
-        for (const Pattern &p : patterns) {
-            if (QFileInfo(p.pdfPath).absoluteFilePath() == QFileInfo(path).absoluteFilePath()) {
-                return true;
+    int existingPatternIndexByPdfPath(const QString &path) const {
+        QString wantedPath = QFileInfo(path).absoluteFilePath();
+
+        for (int i = 0; i < patterns.size(); ++i) {
+            if (QFileInfo(patterns[i].pdfPath).absoluteFilePath() == wantedPath) {
+                return i;
             }
         }
 
-        return false;
+        return -1;
+    }
+
+    bool hasPdfPath(const QString &path) const {
+        return existingPatternIndexByPdfPath(path) >= 0;
     }
 
     QString niceNameFromPdf(const QString &path) const {
@@ -889,6 +895,200 @@ private:
         }
 
         return words.join(" ");
+    }
+
+    QStringList splitCsvLoose(const QString &line) const {
+        QString cleaned = line;
+        cleaned.replace("\"", "");
+
+        return cleaned.split(QRegularExpression("[,;\\t]"), Qt::KeepEmptyParts);
+    }
+
+    QStringList colorsFromCsvFile(const QString &csvPath) const {
+        QStringList colors;
+
+        QFile file(csvPath);
+
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return colors;
+        }
+
+        int dmcColumn = -1;
+        bool headerChecked = false;
+
+        while (!file.atEnd()) {
+            QString line = QString::fromUtf8(file.readLine()).trimmed();
+
+            if (line.isEmpty()) {
+                continue;
+            }
+
+            QStringList fields = splitCsvLoose(line);
+
+            if (fields.isEmpty()) {
+                continue;
+            }
+
+            if (!headerChecked) {
+                for (int i = 0; i < fields.size(); ++i) {
+                    QString field = fields[i].trimmed().toLower();
+
+                    if (
+                        field == "dmc" ||
+                        field == "dmc code" ||
+                        field == "dmc_code" ||
+                        field == "dmc color" ||
+                        field == "dmc_color" ||
+                        field == "floss" ||
+                        field == "floss code" ||
+                        field == "color" ||
+                        field == "colour"
+                    ) {
+                        dmcColumn = i;
+                        break;
+                    }
+                }
+
+                headerChecked = true;
+
+                if (dmcColumn >= 0) {
+                    continue;
+                }
+            }
+
+            QString color;
+
+            // Best case: CSV has a real DMC/floss/color column.
+            if (dmcColumn >= 0 && dmcColumn < fields.size()) {
+                color = normalizeDmcColorToken(fields[dmcColumn]);
+            }
+
+            // Common SpriteStitcher-style fallback:
+            // Symbol,DMC,Name,Count
+            if (color.isEmpty() && fields.size() >= 2) {
+                color = normalizeDmcColorToken(fields[1]);
+            }
+
+            // Another possible layout:
+            // DMC,Name,Symbol,Count
+            if (color.isEmpty() && fields.size() >= 1) {
+                color = normalizeDmcColorToken(fields[0]);
+            }
+
+            // Last fallback for lines like "DMC 310".
+            if (color.isEmpty() && line.contains("DMC", Qt::CaseInsensitive)) {
+                QStringList parsed = parseDmcColors(line);
+
+                if (!parsed.isEmpty()) {
+                    color = parsed.first();
+                }
+            }
+
+            if (!color.isEmpty() && !colors.contains(color)) {
+                colors.append(color);
+            }
+        }
+
+        return colors;
+    }
+
+    QFileInfoList csvFilesUnderFolder(const QString &folder) const {
+        QFileInfoList files;
+
+        QDirIterator it(
+            folder,
+            QStringList() << "*.csv" << "*.CSV",
+            QDir::Files,
+            QDirIterator::Subdirectories
+        );
+
+        while (it.hasNext()) {
+            files.append(QFileInfo(it.next()));
+        }
+
+        return files;
+    }
+
+    QString colorsFromNearbyCsv(const QString &pdfPath, const QString &importRoot = QString(), int *checkedCsvCount = nullptr) const {
+        QFileInfo pdfInfo(pdfPath);
+        QString pdfBase = pdfInfo.completeBaseName().toLower();
+
+        QFileInfoList csvFiles;
+
+        // Same folder as PDF.
+        QDir pdfDir = pdfInfo.dir();
+        csvFiles.append(pdfDir.entryInfoList(QStringList() << "*.csv" << "*.CSV", QDir::Files));
+
+        // Whole imported folder tree.
+        if (!importRoot.isEmpty()) {
+            csvFiles.append(csvFilesUnderFolder(importRoot));
+        }
+
+        // De-duplicate CSV paths.
+        QSet<QString> seen;
+        QFileInfoList uniqueCsvFiles;
+
+        for (const QFileInfo &csvInfo : csvFiles) {
+            QString path = csvInfo.absoluteFilePath();
+
+            if (!seen.contains(path)) {
+                seen.insert(path);
+                uniqueCsvFiles.append(csvInfo);
+            }
+        }
+
+        if (checkedCsvCount) {
+            *checkedCsvCount += uniqueCsvFiles.size();
+        }
+
+        QStringList bestColors;
+        int bestScore = -1;
+
+        for (const QFileInfo &csvInfo : uniqueCsvFiles) {
+            QString csvName = csvInfo.completeBaseName().toLower();
+            QString csvFileName = csvInfo.fileName().toLower();
+
+            QStringList colors = colorsFromCsvFile(csvInfo.absoluteFilePath());
+
+            if (colors.isEmpty()) {
+                continue;
+            }
+
+            int score = 0;
+
+            // Strong filename match.
+            if (csvName == pdfBase) {
+                score += 200;
+            } else if (csvName.contains(pdfBase) || pdfBase.contains(csvName)) {
+                score += 120;
+            }
+
+            // Common legend names.
+            if (
+                csvFileName.contains("legend") ||
+                csvFileName.contains("floss") ||
+                csvFileName.contains("dmc") ||
+                csvFileName.contains("color") ||
+                csvFileName.contains("colour")
+            ) {
+                score += 80;
+            }
+
+            // Same folder as PDF.
+            if (csvInfo.dir().absolutePath() == pdfInfo.dir().absolutePath()) {
+                score += 60;
+            }
+
+            // More colors is usually more likely to be the real legend.
+            score += colors.size();
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestColors = colors;
+            }
+        }
+
+        return normalizedDmcColors(bestColors.join(", "));
     }
 
     void importPatternFolder() {
@@ -908,13 +1108,31 @@ private:
         QDirIterator it(folder, filters, QDir::Files, QDirIterator::Subdirectories);
 
         int imported = 0;
+        int importedWithColors = 0;
+        int updatedWithColors = 0;
         int skipped = 0;
+        int checkedCsvCount = 0;
 
         while (it.hasNext()) {
             QString pdfPath = it.next();
 
-            if (hasPdfPath(pdfPath)) {
-                skipped++;
+            int existingIndex = existingPatternIndexByPdfPath(pdfPath);
+
+            if (existingIndex >= 0) {
+                QString colors = colorsFromNearbyCsv(pdfPath, folder, &checkedCsvCount);
+
+                if (patterns[existingIndex].colors.trimmed().isEmpty() && !colors.isEmpty()) {
+                    patterns[existingIndex].colors = colors;
+
+                    if (!patterns[existingIndex].notes.contains("DMC colors imported from nearby CSV legend.")) {
+                        patterns[existingIndex].notes += "\nDMC colors imported from nearby CSV legend.";
+                    }
+
+                    updatedWithColors++;
+                } else {
+                    skipped++;
+                }
+
                 continue;
             }
 
@@ -929,14 +1147,19 @@ private:
             pattern.stitchHeight = 0;
             pattern.fabricCount = 14;
             pattern.borderInches = 2.0;
-            pattern.colors = "";
+            pattern.colors = colorsFromNearbyCsv(pdfPath, folder, &checkedCsvCount);
             pattern.notes = QString("Imported from %1").arg(folder);
+
+            if (!pattern.colors.isEmpty()) {
+                pattern.notes += "\nDMC colors imported from nearby CSV legend.";
+                importedWithColors++;
+            }
 
             patterns.push_back(pattern);
             imported++;
         }
 
-        if (imported > 0) {
+        if (imported > 0 || updatedWithColors > 0) {
             savePatterns();
             refreshTable();
         }
@@ -944,9 +1167,12 @@ private:
         QMessageBox::information(
             this,
             "Import Complete",
-            QString("Imported %1 pattern PDF(s).\nSkipped %2 duplicate PDF(s).")
+            QString("Imported %1 pattern PDF(s).\nImported DMC colors for %2 new pattern(s).\nUpdated DMC colors for %3 existing pattern(s).\nSkipped %4 duplicate PDF(s).\nChecked %5 CSV file(s).")
                 .arg(imported)
+                .arg(importedWithColors)
+                .arg(updatedWithColors)
                 .arg(skipped)
+                .arg(checkedCsvCount)
         );
     }
 
