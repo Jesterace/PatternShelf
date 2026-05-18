@@ -19,6 +19,7 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QTableWidget>
@@ -38,6 +39,40 @@ struct Pattern {
     QString colors;
     QString notes;
 };
+
+static QStringList parseDmcColors(const QString &input) {
+    QStringList colors;
+
+    QRegularExpression rx(
+        "\\b(?:DMC\\s*)?(B5200|BLANC|WHITE|ECRU|[0-9]{1,4})\\b",
+        QRegularExpression::CaseInsensitiveOption
+    );
+
+    QRegularExpressionMatchIterator it = rx.globalMatch(input);
+
+    while (it.hasNext()) {
+        QRegularExpressionMatch match = it.next();
+        QString color = match.captured(1).trimmed().toUpper();
+
+        if (color == "WHITE") {
+            color = "BLANC";
+        }
+
+        if (!color.isEmpty() && !colors.contains(color)) {
+            colors.append(color);
+        }
+    }
+
+    return colors;
+}
+
+static QString normalizedDmcColors(const QString &input) {
+    return parseDmcColors(input).join(", ");
+}
+
+static QString dmcColorCountText(const QString &input) {
+    return QString::number(parseDmcColors(input).size());
+}
 
 static QString dataFilePath() {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -78,7 +113,7 @@ public:
         borderSpin->setValue(2.0);
 
         colorsEdit = new QLineEdit;
-        colorsEdit->setPlaceholderText("Example: 310, 3843, 742");
+        colorsEdit->setPlaceholderText("Example: 310, 3843, 742, B5200");
 
         notesEdit = new QTextEdit;
 
@@ -161,7 +196,7 @@ public:
         p.stitchHeight = heightSpin->value();
         p.fabricCount = fabricSpin->value();
         p.borderInches = borderSpin->value();
-        p.colors = colorsEdit->text().trimmed();
+        p.colors = normalizedDmcColors(colorsEdit->text());
         p.notes = notesEdit->toPlainText().trimmed();
         return p;
     }
@@ -182,7 +217,7 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("JesterPatternShelf v0.4");
+        setWindowTitle("JesterPatternShelf v0.5");
         resize(1000, 600);
 
         auto *central = new QWidget;
@@ -213,7 +248,7 @@ public:
         layout->addWidget(searchEdit);
 
         table = new QTableWidget;
-        table->setColumnCount(9);
+        table->setColumnCount(10);
         table->setHorizontalHeaderLabels({
             "Name",
             "Status",
@@ -222,7 +257,8 @@ public:
             "Aida",
             "Border",
             "Fabric Cut",
-            "Colors",
+            "Color Count",
+            "DMC Colors",
             "PDF"
         });
 
@@ -427,8 +463,9 @@ private:
             table->setItem(row, 4, new QTableWidgetItem(QString::number(p.fabricCount)));
             table->setItem(row, 5, new QTableWidgetItem(QString("%1\"").arg(QString::number(p.borderInches, 'f', 1))));
             table->setItem(row, 6, new QTableWidgetItem(fabricCutText(p)));
-            table->setItem(row, 7, new QTableWidgetItem(p.colors));
-            table->setItem(row, 8, new QTableWidgetItem(p.pdfPath));
+            table->setItem(row, 7, new QTableWidgetItem(dmcColorCountText(p.colors)));
+            table->setItem(row, 8, new QTableWidgetItem(p.colors));
+            table->setItem(row, 9, new QTableWidgetItem(p.pdfPath));
         }
 
         updateNotes();
@@ -461,7 +498,9 @@ private:
 
         const Pattern &p = patterns[index];
 
-        QString text = QString("<b>%1</b><br>Status: %2<br>Stitches: %3 x %4<br>Design size: %5<br>Fabric cut: %6 with %7\" border<br>Notes: %8")
+        QString colorText = p.colors.isEmpty() ? "None listed." : p.colors.toHtmlEscaped();
+
+        QString text = QString("<b>%1</b><br>Status: %2<br>Stitches: %3 x %4<br>Design size: %5<br>Fabric cut: %6 with %7\" border<br>DMC colors: %8<br>Color count: %9<br>Notes: %10")
             .arg(p.name.toHtmlEscaped())
             .arg(p.status.toHtmlEscaped())
             .arg(p.stitchWidth)
@@ -469,6 +508,8 @@ private:
             .arg(designSizeText(p).toHtmlEscaped())
             .arg(fabricCutText(p).toHtmlEscaped())
             .arg(QString::number(p.borderInches, 'f', 1))
+            .arg(colorText)
+            .arg(dmcColorCountText(p.colors))
             .arg(p.notes.isEmpty() ? "No notes." : p.notes.toHtmlEscaped());
 
         notesLabel->setText(text);
