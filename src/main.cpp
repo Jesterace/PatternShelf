@@ -291,7 +291,7 @@ private:
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("PatternShelf v1.6");
+        setWindowTitle("PatternShelf v1.7");
         setWindowIcon(QIcon::fromTheme("patternshelf"));
         resize(1000, 600);
 
@@ -308,7 +308,7 @@ public:
         auto *addButton = new QPushButton("Add Pattern");
         auto *importButton = new QPushButton("Import Pattern Folder");
         auto *reloadStashButton = new QPushButton("Reload Stash");
-        auto *setStashPathButton = new QPushButton("Set Stash Path");
+        auto *settingsButton = new QPushButton("Settings");
         auto *importCsvColorsButton = new QPushButton("Import Colors from CSV");
         auto *backupLibraryButton = new QPushButton("Backup Library");
         auto *restoreLibraryButton = new QPushButton("Restore Library");
@@ -321,7 +321,7 @@ public:
         toolbar->addWidget(addButton);
         toolbar->addWidget(importButton);
         toolbar->addWidget(reloadStashButton);
-        toolbar->addWidget(setStashPathButton);
+        toolbar->addWidget(settingsButton);
         toolbar->addWidget(importCsvColorsButton);
         toolbar->addWidget(backupLibraryButton);
         toolbar->addWidget(restoreLibraryButton);
@@ -405,8 +405,8 @@ public:
             reloadStash();
         });
 
-        connect(setStashPathButton, &QPushButton::clicked, this, [this]() {
-            chooseStashPath();
+        connect(settingsButton, &QPushButton::clicked, this, [this]() {
+            openSettingsDialog();
         });
 
         connect(importCsvColorsButton, &QPushButton::clicked, this, [this]() {
@@ -471,6 +471,11 @@ private:
             openPdf();
         });
 
+        auto *settingsAction = fileMenu->addAction("&Settings...");
+        connect(settingsAction, &QAction::triggered, this, [this]() {
+            openSettingsDialog();
+        });
+
         fileMenu->addSeparator();
 
         auto *quitAction = fileMenu->addAction("&Quit");
@@ -485,7 +490,7 @@ private:
             QMessageBox::about(
                 this,
                 "About PatternShelf",
-                "<h3>PatternShelf v1.6</h3>"
+                "<h3>PatternShelf v1.7</h3>"
                 "<p>A personal cross-stitch pattern library manager.</p>"
                 "<p>Tracks pattern PDFs, stitch sizes, fabric cuts, DMC colors, "
                 "FlossKeeper stash matches, missing colors, and need-to-buy lists.</p>"
@@ -621,33 +626,110 @@ private:
         return p.status == filter;
     }
 
-    void chooseStashPath() {
-        QString currentPath = configuredStashPath();
-        QFileInfo currentInfo(currentPath);
+    void openSettingsDialog() {
+        QDialog dialog(this);
+        dialog.setWindowTitle("PatternShelf Settings");
+        dialog.resize(640, 220);
 
-        QString startDir = currentInfo.exists()
-            ? currentInfo.absolutePath()
-            : QDir::homePath();
+        auto *mainLayout = new QVBoxLayout;
 
-        QString path = QFileDialog::getOpenFileName(
-            this,
-            "Choose FlossKeeper Stash TSV",
-            startDir,
-            "TSV Files (*.tsv);;Text Files (*.txt);;All Files (*)"
+        auto *introLabel = new QLabel(
+            "Configure PatternShelf paths and app settings."
         );
+        introLabel->setWordWrap(true);
+        mainLayout->addWidget(introLabel);
 
-        if (path.isEmpty()) {
-            return;
-        }
+        auto *stashPathEdit = new QLineEdit(configuredStashPath());
 
-        saveConfiguredStashPath(path);
-        reloadStash(false);
+        auto *browseButton = new QPushButton("Browse...");
+        auto *defaultButton = new QPushButton("Use Default");
 
-        QMessageBox::information(
-            this,
-            "Stash Path Updated",
-            QString("FlossKeeper stash path set to:\n%1").arg(path)
+        auto *stashRow = new QHBoxLayout;
+        stashRow->addWidget(stashPathEdit);
+        stashRow->addWidget(browseButton);
+        stashRow->addWidget(defaultButton);
+
+        auto *form = new QFormLayout;
+        form->addRow("FlossKeeper stash TSV:", stashRow);
+        mainLayout->addLayout(form);
+
+        auto *defaultLabel = new QLabel(
+            QString("Default: %1").arg(builtInDefaultStashPath())
         );
+        defaultLabel->setWordWrap(true);
+        mainLayout->addWidget(defaultLabel);
+
+        auto *saveButton = new QPushButton("Save");
+        auto *cancelButton = new QPushButton("Cancel");
+
+        auto *buttonRow = new QHBoxLayout;
+        buttonRow->addStretch();
+        buttonRow->addWidget(saveButton);
+        buttonRow->addWidget(cancelButton);
+        mainLayout->addLayout(buttonRow);
+
+        dialog.setLayout(mainLayout);
+
+        connect(browseButton, &QPushButton::clicked, &dialog, [this, stashPathEdit]() {
+            QFileInfo currentInfo(stashPathEdit->text().trimmed());
+
+            QString startDir = currentInfo.exists()
+                ? currentInfo.absolutePath()
+                : QDir::homePath();
+
+            QString path = QFileDialog::getOpenFileName(
+                this,
+                "Choose FlossKeeper Stash TSV",
+                startDir,
+                "TSV Files (*.tsv);;Text Files (*.txt);;All Files (*)"
+            );
+
+            if (!path.isEmpty()) {
+                stashPathEdit->setText(path);
+            }
+        });
+
+        connect(defaultButton, &QPushButton::clicked, &dialog, [stashPathEdit]() {
+            stashPathEdit->setText(builtInDefaultStashPath());
+        });
+
+        connect(cancelButton, &QPushButton::clicked, &dialog, [&dialog]() {
+            dialog.reject();
+        });
+
+        connect(saveButton, &QPushButton::clicked, &dialog, [this, &dialog, stashPathEdit]() {
+            QString path = stashPathEdit->text().trimmed();
+
+            if (path.isEmpty()) {
+                QMessageBox::warning(
+                    this,
+                    "Missing Stash Path",
+                    "Choose a FlossKeeper stash TSV file first."
+                );
+                return;
+            }
+
+            if (!QFileInfo::exists(path)) {
+                QMessageBox::warning(
+                    this,
+                    "Stash File Not Found",
+                    "That stash file does not exist. Choose an existing TSV file."
+                );
+                return;
+            }
+
+            saveConfiguredStashPath(path);
+            reloadStash(false);
+            dialog.accept();
+
+            QMessageBox::information(
+                this,
+                "Settings Saved",
+                "PatternShelf settings saved successfully."
+            );
+        });
+
+        dialog.exec();
     }
 
     void updateStashLabel() {
